@@ -1,4 +1,3 @@
-// src/server.js (Gemini → OpenAI → Cohere fallback)
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
@@ -94,7 +93,7 @@ wss.on('connection', (ws) => {
             const cohereResp = await axios.post(
               COHERE_API_URL,
               {
-                model: "command-r-plus", // free tier model
+                model: "command-r-plus",
                 message: userText
               },
               {
