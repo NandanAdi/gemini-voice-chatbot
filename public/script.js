@@ -1,8 +1,7 @@
-// public/script.js (SpeechRecognition + Voice Selector)
+
 const micBtn = document.getElementById('mic-btn');
 const chatContainer = document.getElementById('chat-container');
 
-// 🎤 Create and style voice selector dropdown
 const voiceSelector = document.createElement("select");
 voiceSelector.id = "voice-selector";
 voiceSelector.style.margin = "10px";
@@ -14,7 +13,6 @@ voiceSelector.style.color = "#fff";
 voiceSelector.style.border = "1px solid #555";
 voiceSelector.style.display = "block";
 
-// Insert dropdown ABOVE mic button
 micBtn.parentNode.insertBefore(voiceSelector, micBtn);
 
 let socket;
@@ -23,7 +21,6 @@ let recognition;
 let voices = [];
 let selectedVoice = null;
 
-// Init WebSocket
 function initSocket() {
     socket = new WebSocket(`ws://${window.location.host}`);
 
@@ -41,7 +38,6 @@ function initSocket() {
     };
 }
 
-// 🔊 Load voices into dropdown
 function loadVoices() {
     voices = speechSynthesis.getVoices();
 
@@ -76,13 +72,11 @@ function loadVoices() {
 speechSynthesis.onvoiceschanged = loadVoices;
 loadVoices();
 
-// Handle voice change
 voiceSelector.addEventListener("change", () => {
     selectedVoice = voices[parseInt(voiceSelector.value)];
     console.log("🔊 Switched to voice:", selectedVoice.name);
 });
 
-// 🗣️ Speak AI response
 function speakText(text) {
     if (!selectedVoice) {
         console.warn("⚠️ No voice selected, skipping speech.");
@@ -140,7 +134,6 @@ function startListening() {
     micBtn.classList.add('listening');
 }
 
-// 🎤 Toggle mic
 micBtn.addEventListener('click', () => {
     if (isListening) {
         recognition.stop();
@@ -149,5 +142,4 @@ micBtn.addEventListener('click', () => {
     }
 });
 
-// 🔌 Init socket
 initSocket();
