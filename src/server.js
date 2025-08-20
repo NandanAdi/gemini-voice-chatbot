@@ -1,9 +1,9 @@
-// src/server.js (Gemini Live WebSocket + fallback to OpenAI & Cohere)
-require("dotenv").config();
-const express = require("express");
-const http = require("http");
-const WebSocket = require("ws");
-const axios = require("axios");
+// src/server.js (Gemini → OpenAI → Cohere fallback)
+require('dotenv').config();
+const express = require('express');
+const http = require('http');
+const WebSocket = require('ws');
+const axios = require('axios');
 
 const app = express();
 const server = http.createServer(app);

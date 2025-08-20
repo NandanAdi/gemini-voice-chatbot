@@ -1,3 +1,4 @@
+/* public/style.css */
 :root {
   --background-color: #121212;
   --surface-color: #1e1e1e;
@@ -119,7 +120,7 @@ body {
   100% { transform: scale(1); }
 }
 
-/* Background visualizer */
+/* Background Visualizer */
 .background-visualizer {
   position: absolute;
   top: 0;
