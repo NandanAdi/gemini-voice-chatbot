@@ -1,99 +1,84 @@
-// public/script.js (SpeechRecognition + Voice Selector)
-const micBtn = document.getElementById('mic-btn');
-const chatContainer = document.getElementById('chat-container');
+// public/script.js
+const chatContainer = document.getElementById("chat-container");
+const micBtn = document.getElementById("mic-btn");
+const voiceSelect = document.getElementById("voice-select");
 
-// 🎤 Create and style voice selector dropdown
-const voiceSelector = document.createElement("select");
-voiceSelector.id = "voice-selector";
-voiceSelector.style.margin = "10px";
-voiceSelector.style.padding = "6px";
-voiceSelector.style.borderRadius = "8px";
-voiceSelector.style.fontSize = "14px";
-voiceSelector.style.background = "#1e1e1e";
-voiceSelector.style.color = "#fff";
-voiceSelector.style.border = "1px solid #555";
-voiceSelector.style.display = "block";
+const MIN_GAP_MS = 1000; // ~1s pause before AI responds
 
-// Insert dropdown ABOVE mic button
-micBtn.parentNode.insertBefore(voiceSelector, micBtn);
+let ws;
+function connectWS() {
+  ws = new WebSocket(`ws://${window.location.host}`);
+  ws.onopen = () => console.log("✅ WS connected");
+  ws.onclose = () => setTimeout(connectWS, 1000);
+  ws.onmessage = (evt) => handleServerMessage(evt.data);
+}
+connectWS();
 
-let socket;
-let isListening = false;
-let recognition;
-let voices = [];
-let selectedVoice = null;
-
-// Init WebSocket
-function initSocket() {
-    socket = new WebSocket(`ws://${window.location.host}`);
-
-    socket.onmessage = (event) => {
-        console.log("Message from server:", event.data);
-        try {
-            const data = JSON.parse(event.data);
-            if (data.text) {
-                chatContainer.innerHTML += `<p class="ai-message">[AI] ${data.text}</p>`;
-                speakText(data.text);
-            }
-        } catch (e) {
-            console.error("Received non-JSON:", event.data);
-        }
-    };
+function sendToServer(text) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(text);
+  }
 }
 
-// 🔊 Load voices into dropdown
-function loadVoices() {
-    voices = speechSynthesis.getVoices();
+// -------------------- Chat UI --------------------
+function addMessage(text, role = "ai", source = null) {
+  const el = document.createElement("div");
+  el.className = role === "user" ? "user-message" : "ai-message";
+  el.textContent = text;
+  if (role === "ai" && source) {
+    const s = document.createElement("div");
+    s.className = "source-label";
+    s.textContent = `(${source})`;
+    el.appendChild(document.createElement("br"));
+    el.appendChild(s);
+  }
+  chatContainer.appendChild(el);
+  chatContainer.scrollTop = chatContainer.scrollHeight;
+}
 
-    // Prevent empty dropdown
-    if (!voices || voices.length === 0) {
-        console.warn("⚠️ No voices loaded yet, retrying...");
-        setTimeout(loadVoices, 500); // retry
-        return;
-    }
+// -------------------- Speech Synthesis --------------------
+let voices = [];
+let selectedVoiceIndex = 0;
+let isSpeaking = false;
+let currentUtterance = null;
 
-    voiceSelector.innerHTML = "";
-
-    voices.forEach((voice, i) => {
-        const option = document.createElement("option");
-        option.value = i;
-        option.textContent = `${voice.name} (${voice.lang})`;
-        if (selectedVoice && voice.name === selectedVoice.name) {
-            option.selected = true;
-        }
-        voiceSelector.appendChild(option);
-    });
-
-    if (!selectedVoice) {
-        selectedVoice =
-            voices.find(v => v.name.toLowerCase().includes("aria")) ||
-            voices.find(v => v.name.toLowerCase().includes("google")) ||
-            voices.find(v => v.lang.startsWith("en-US")) ||
-            voices[0];
-        console.log("✅ Default voice selected:", selectedVoice.name);
-    }
+function populateVoiceList() {
+  voices = speechSynthesis.getVoices();
+  voiceSelect.innerHTML = voices
+    .map((v, i) => `<option value="${i}">${v.name} — ${v.lang}</option>`)
+    .join("");
+  selectedVoiceIndex = voices.findIndex(v => v.lang.startsWith("en-IN")) || 0;
+  voiceSelect.value = String(selectedVoiceIndex);
 }
 speechSynthesis.onvoiceschanged = populateVoiceList;
 populateVoiceList();
 
-// Handle voice change
-voiceSelector.addEventListener("change", () => {
-    selectedVoice = voices[parseInt(voiceSelector.value)];
-    console.log("🔊 Switched to voice:", selectedVoice.name);
+voiceSelect.addEventListener("change", () => {
+  selectedVoiceIndex = parseInt(voiceSelect.value || "0", 10) || 0;
 });
 
-// 🗣️ Speak AI response
-function speakText(text) {
-    if (!selectedVoice) {
-        console.warn("⚠️ No voice selected, skipping speech.");
-        return;
+function cancelTTS(force = true) {
+  try {
+    if (force) {
+      // kill any queued / ongoing utterance instantly
+      speechSynthesis.cancel();
     }
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = selectedVoice.lang || "en-US";
-    utterance.voice = selectedVoice;
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    speechSynthesis.speak(utterance);
+  } catch {}
+  isSpeaking = false;
+  currentUtterance = null;
+}
+
+function speakWithGap(text) {
+  cancelTTS(); // clear leftovers
+  const v = voices[selectedVoiceIndex];
+  const u = new SpeechSynthesisUtterance(text);
+  if (v) u.voice = v;
+  u.onstart = () => { isSpeaking = true; console.log("🔊 AI speaking…"); };
+  u.onend = () => { isSpeaking = false; currentUtterance = null; console.log("🛑 AI finished"); };
+  u.onerror = () => { isSpeaking = false; currentUtterance = null; };
+  currentUtterance = u;
+  const wait = Math.max(0, MIN_GAP_MS - (Date.now() - lastFinalUserTs));
+  setTimeout(() => speechSynthesis.speak(u), wait);
 }
 
 // -------------------- Speech Recognition --------------------
@@ -152,14 +137,25 @@ function stopRecognition() {
   micBtn.classList.remove("listening");
 }
 
-// 🎤 Toggle mic
-micBtn.addEventListener('click', () => {
-    if (isListening) {
-        recognition.stop();
-    } else {
-        startListening();
-    }
+// -------------------- Mic Toggle --------------------
+micBtn.addEventListener("click", () => {
+  if (isListening || isSpeaking) {
+    console.log("🛑 Manual STOP: mic + TTS");
+    stopRecognition();
+    cancelTTS(true);
+  } else {
+    console.log("▶️ Manual START: mic listening");
+    lastUserText = "";
+    startRecognition();
+  }
 });
 
-// 🔌 Init socket
-initSocket();
+// -------------------- Server Message Handler --------------------
+function handleServerMessage(raw) {
+  let data;
+  try { data = JSON.parse(raw); } catch { return; }
+  const text = data?.text;
+  if (!text) return;
+  addMessage(text, "ai", data.source);
+  speakWithGap(text);
+}
