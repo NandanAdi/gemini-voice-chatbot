@@ -1,14 +1,14 @@
-// public/script.js
+
 const chatContainer = document.getElementById("chat-container");
 const micBtn = document.getElementById("mic-btn");
 const voiceSelect = document.getElementById("voice-select");
 
-const MIN_GAP_MS = 1000; // ~1s pause before AI responds
+const MIN_GAP_MS = 1000; 
 
 let ws;
 function connectWS() {
   ws = new WebSocket(`ws://${window.location.host}`);
-  ws.onopen = () => console.log("✅ WS connected");
+  ws.onopen = () => console.log(" WS connected");
   ws.onclose = () => setTimeout(connectWS, 1000);
   ws.onmessage = (evt) => handleServerMessage(evt.data);
 }
@@ -20,7 +20,6 @@ function sendToServer(text) {
   }
 }
 
-// -------------------- Chat UI --------------------
 function addMessage(text, role = "ai", source = null) {
   const el = document.createElement("div");
   el.className = role === "user" ? "user-message" : "ai-message";
@@ -36,7 +35,6 @@ function addMessage(text, role = "ai", source = null) {
   chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
-// -------------------- Speech Synthesis --------------------
 let voices = [];
 let selectedVoiceIndex = 0;
 let isSpeaking = false;
@@ -60,7 +58,6 @@ voiceSelect.addEventListener("change", () => {
 function cancelTTS(force = true) {
   try {
     if (force) {
-      // kill any queued / ongoing utterance instantly
       speechSynthesis.cancel();
     }
   } catch {}
@@ -69,12 +66,12 @@ function cancelTTS(force = true) {
 }
 
 function speakWithGap(text) {
-  cancelTTS(); // clear leftovers
+  cancelTTS(); 
   const v = voices[selectedVoiceIndex];
   const u = new SpeechSynthesisUtterance(text);
   if (v) u.voice = v;
   u.onstart = () => { isSpeaking = true; console.log("🔊 AI speaking…"); };
-  u.onend = () => { isSpeaking = false; currentUtterance = null; console.log("🛑 AI finished"); };
+  u.onend = () => { isSpeaking = false; currentUtterance = null; console.log(" AI finished"); };
   u.onerror = () => { isSpeaking = false; currentUtterance = null; };
   currentUtterance = u;
   const wait = Math.max(0, MIN_GAP_MS - (Date.now() - lastFinalUserTs));
@@ -140,11 +137,11 @@ function stopRecognition() {
 // -------------------- Mic Toggle --------------------
 micBtn.addEventListener("click", () => {
   if (isListening || isSpeaking) {
-    console.log("🛑 Manual STOP: mic + TTS");
+    console.log(" Manual STOP: mic + TTS");
     stopRecognition();
     cancelTTS(true);
   } else {
-    console.log("▶️ Manual START: mic listening");
+    console.log(" Manual START: mic listening");
     lastUserText = "";
     startRecognition();
   }
