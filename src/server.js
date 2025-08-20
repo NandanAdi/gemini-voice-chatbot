@@ -1,4 +1,4 @@
-// src/server.js (Gemini → OpenAI → Cohere fallback)
+
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
@@ -22,16 +22,16 @@ const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const COHERE_API_URL = "https://api.cohere.ai/v1/chat";
 
 wss.on("connection", (clientWs) => {
-  console.log("🌐 Client connected");
+  console.log(" Client connected");
 
   let geminiWs;
 
   try {
-    // 🔗 Connect to Gemini Live WebSocket
+    //  Connect to Gemini Live WebSocket
     geminiWs = new WebSocket(GEMINI_LIVE_URL);
 
     geminiWs.on("open", () => {
-      console.log("✅ Connected to Gemini Live API");
+      console.log(" Connected to Gemini Live API");
 
       // Tell Gemini which model to use
       geminiWs.send(
@@ -47,10 +47,10 @@ wss.on("connection", (clientWs) => {
         const msg = JSON.parse(data.toString());
         const text = msg.candidates?.[0]?.content?.parts?.[0]?.text;
 
-        // 🚫 Ignore system/init responses
+        //  Ignore system/init responses
         if (!text || text.toLowerCase().includes("gemini live")) return;
 
-        console.log("🤖 Gemini Live:", text);
+        console.log(" Gemini Live:", text);
         if (clientWs.readyState === WebSocket.OPEN) {
           clientWs.send(JSON.stringify({ text, source: "Gemini" }));
         }
@@ -60,20 +60,20 @@ wss.on("connection", (clientWs) => {
     });
 
     geminiWs.on("error", (err) => {
-      console.error("🚨 Gemini Live error:", err.message);
+      console.error(" Gemini Live error:", err.message);
     });
 
     // When browser sends a message → forward to Gemini
     clientWs.on("message", (msg) => {
       const userText = msg.toString().trim();
 
-      // 🚫 Ignore empty/blank messages
+      //  Ignore empty/blank messages
       if (!userText) {
-        console.log("⚠️ Ignored empty message");
+        console.log(" Ignored empty message");
         return;
       }
 
-      console.log("📝 User said:", userText);
+      console.log(" User said:", userText);
 
       if (geminiWs.readyState === WebSocket.OPEN) {
         geminiWs.send(
@@ -82,19 +82,19 @@ wss.on("connection", (clientWs) => {
           })
         );
       } else {
-        console.log("⚠️ Gemini WS not open, using fallback...");
+        console.log(" Gemini WS not open, using fallback...");
         fallbackToOtherModels(clientWs, userText);
       }
     });
   } catch (err) {
-    console.error("🚨 Could not connect to Gemini Live:", err.message);
+    console.error(" Could not connect to Gemini Live:", err.message);
   }
 
   clientWs.on("close", () => {
     if (geminiWs && geminiWs.readyState === WebSocket.OPEN) {
       geminiWs.close();
     }
-    console.log("❌ Client disconnected");
+    console.log(" Client disconnected");
   });
 });
 
@@ -102,10 +102,10 @@ wss.on("connection", (clientWs) => {
  * Fallback to OpenAI → Cohere if Gemini Live fails
  */
 async function fallbackToOtherModels(ws, userText) {
-  let finalText = "❌ Could not get a response.";
+  let finalText = " Could not get a response.";
   let source = "Unknown";
 
-  // 1️⃣ Try OpenAI
+  //  Try OpenAI
   try {
     const openaiResp = await axios.post(
       OPENAI_API_URL,
@@ -130,13 +130,13 @@ async function fallbackToOtherModels(ws, userText) {
 
     finalText =
       openaiResp.data.choices?.[0]?.message?.content ||
-      "❌ OpenAI returned no text.";
+      " OpenAI returned no text.";
     source = "OpenAI";
-    console.log("🤖 OpenAI response:", finalText);
+    console.log(" OpenAI response:", finalText);
   } catch (err) {
-    console.error("🚨 OpenAI error:", err.response?.data || err.message);
+    console.error(" OpenAI error:", err.response?.data || err.message);
 
-    // 2️⃣ Try Cohere
+    //  Try Cohere
     try {
       const cohereResp = await axios.post(
         COHERE_API_URL,
@@ -161,16 +161,16 @@ async function fallbackToOtherModels(ws, userText) {
 
       finalText =
         cohereResp.data?.text ||
-        "❌ Cohere returned no text.";
+        " Cohere returned no text.";
       source = "Cohere";
 
-      console.log("🤖 Cohere response:", finalText);
+      console.log(" Cohere response:", finalText);
     } catch (cohereError) {
       console.error(
-        "🚨 Cohere error:",
+        " Cohere error:",
         cohereError.response?.data || cohereError.message
       );
-      finalText = "❌ All providers failed (Gemini, OpenAI, Cohere).";
+      finalText = " All providers failed (Gemini, OpenAI, Cohere).";
       source = "None";
     }
   }
@@ -182,6 +182,6 @@ async function fallbackToOtherModels(ws, userText) {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  if (!GEMINI_API_KEY) console.error("❌ Missing GEMINI_API_KEY in .env file");
+  console.log(` Server running on http://localhost:${PORT}`);
+  if (!GEMINI_API_KEY) console.error(" Missing GEMINI_API_KEY in .env file");
 });
