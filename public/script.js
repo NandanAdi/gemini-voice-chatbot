@@ -1,146 +1,161 @@
+// public/script.js
+const chatContainer = document.getElementById("chat-container");
+const micBtn = document.getElementById("mic-btn");
+const voiceSelect = document.getElementById("voice-select");
 
-const micBtn = document.getElementById('mic-btn');
-const chatContainer = document.getElementById('chat-container');
+const MIN_GAP_MS = 1000; // ~1s pause before AI responds
 
-const voiceSelector = document.createElement("select");
-voiceSelector.id = "voice-selector";
-voiceSelector.style.margin = "10px";
-voiceSelector.style.padding = "6px";
-voiceSelector.style.borderRadius = "8px";
-voiceSelector.style.fontSize = "14px";
-voiceSelector.style.background = "#1e1e1e";
-voiceSelector.style.color = "#fff";
-voiceSelector.style.border = "1px solid #555";
-voiceSelector.style.display = "block";
+let ws;
+function connectWS() {
+  ws = new WebSocket(`ws://${window.location.host}`);
+  ws.onopen = () => console.log("✅ WS connected");
+  ws.onclose = () => setTimeout(connectWS, 1000);
+  ws.onmessage = (evt) => handleServerMessage(evt.data);
+}
+connectWS();
 
-micBtn.parentNode.insertBefore(voiceSelector, micBtn);
+function sendToServer(text) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(text);
+  }
+}
 
-let socket;
-let isListening = false;
-let recognition;
+// -------------------- Chat UI --------------------
+function addMessage(text, role = "ai", source = null) {
+  const el = document.createElement("div");
+  el.className = role === "user" ? "user-message" : "ai-message";
+  el.textContent = text;
+  if (role === "ai" && source) {
+    const s = document.createElement("div");
+    s.className = "source-label";
+    s.textContent = `(${source})`;
+    el.appendChild(document.createElement("br"));
+    el.appendChild(s);
+  }
+  chatContainer.appendChild(el);
+  chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+// -------------------- Speech Synthesis --------------------
 let voices = [];
-let selectedVoice = null;
+let selectedVoiceIndex = 0;
+let isSpeaking = false;
+let currentUtterance = null;
 
-function initSocket() {
-    socket = new WebSocket(`ws://${window.location.host}`);
-
-    socket.onmessage = (event) => {
-        console.log("Message from server:", event.data);
-        try {
-            const data = JSON.parse(event.data);
-            if (data.text) {
-                chatContainer.innerHTML += `<p class="ai-message">[AI] ${data.text}</p>`;
-                speakText(data.text);
-            }
-        } catch (e) {
-            console.error("Received non-JSON:", event.data);
-        }
-    };
+function populateVoiceList() {
+  voices = speechSynthesis.getVoices();
+  voiceSelect.innerHTML = voices
+    .map((v, i) => `<option value="${i}">${v.name} — ${v.lang}</option>`)
+    .join("");
+  selectedVoiceIndex = voices.findIndex(v => v.lang.startsWith("en-IN")) || 0;
+  voiceSelect.value = String(selectedVoiceIndex);
 }
+speechSynthesis.onvoiceschanged = populateVoiceList;
+populateVoiceList();
 
-function loadVoices() {
-    voices = speechSynthesis.getVoices();
-
-    
-    if (!voices || voices.length === 0) {
-        console.warn("⚠️ No voices loaded yet, retrying...");
-        setTimeout(loadVoices, 500); 
-        return;
-    }
-
-    voiceSelector.innerHTML = "";
-
-    voices.forEach((voice, i) => {
-        const option = document.createElement("option");
-        option.value = i;
-        option.textContent = `${voice.name} (${voice.lang})`;
-        if (selectedVoice && voice.name === selectedVoice.name) {
-            option.selected = true;
-        }
-        voiceSelector.appendChild(option);
-    });
-
-    if (!selectedVoice) {
-        selectedVoice =
-            voices.find(v => v.name.toLowerCase().includes("aria")) ||
-            voices.find(v => v.name.toLowerCase().includes("google")) ||
-            voices.find(v => v.lang.startsWith("en-US")) ||
-            voices[0];
-        console.log("✅ Default voice selected:", selectedVoice.name);
-    }
-}
-speechSynthesis.onvoiceschanged = loadVoices;
-loadVoices();
-
-
-voiceSelector.addEventListener("change", () => {
-    selectedVoice = voices[parseInt(voiceSelector.value)];
-    console.log("🔊 Switched to voice:", selectedVoice.name);
+voiceSelect.addEventListener("change", () => {
+  selectedVoiceIndex = parseInt(voiceSelect.value || "0", 10) || 0;
 });
 
-
-function speakText(text) {
-    if (!selectedVoice) {
-        console.warn("⚠️ No voice selected, skipping speech.");
-        return;
+function cancelTTS(force = true) {
+  try {
+    if (force) {
+      // kill any queued / ongoing utterance instantly
+      speechSynthesis.cancel();
     }
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = selectedVoice.lang || "en-US";
-    utterance.voice = selectedVoice;
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    speechSynthesis.speak(utterance);
+  } catch {}
+  isSpeaking = false;
+  currentUtterance = null;
 }
 
-function startListening() {
-    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-        alert("Speech Recognition not supported in this browser.");
-        return;
-    }
-
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    recognition = new SR();
-    recognition.lang = "en-IN";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
-    recognition.onstart = () => {
-        console.log("🎙 Listening...");
-        chatContainer.innerHTML += `<p class="ai-message">Listening...</p>`;
-    };
-
-    recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        console.log("📝 You said:", transcript);
-        chatContainer.innerHTML += `<p class="user-message">${transcript}</p>`;
-
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(transcript);
-        }
-    };
-
-    recognition.onerror = (event) => {
-        console.error("❌ Recognition error:", event.error);
-        chatContainer.innerHTML += `<p class="ai-message">Speech recognition error: ${event.error}</p>`;
-    };
-
-    recognition.onend = () => {
-        console.log("🛑 Stopped listening.");
-        isListening = false;
-        micBtn.classList.remove('listening');
-    };
-
-    recognition.start();
-    isListening = true;
-    micBtn.classList.add('listening');
+function speakWithGap(text) {
+  cancelTTS(); // clear leftovers
+  const v = voices[selectedVoiceIndex];
+  const u = new SpeechSynthesisUtterance(text);
+  if (v) u.voice = v;
+  u.onstart = () => { isSpeaking = true; console.log("🔊 AI speaking…"); };
+  u.onend = () => { isSpeaking = false; currentUtterance = null; console.log("🛑 AI finished"); };
+  u.onerror = () => { isSpeaking = false; currentUtterance = null; };
+  currentUtterance = u;
+  const wait = Math.max(0, MIN_GAP_MS - (Date.now() - lastFinalUserTs));
+  setTimeout(() => speechSynthesis.speak(u), wait);
 }
 
-micBtn.addEventListener('click', () => {
-    if (isListening) {
-        recognition.stop();
-    } else {
-        startListening();
+// -------------------- Speech Recognition --------------------
+let recognition;
+let isListening = false;
+let manualStop = false;
+let lastUserText = "";
+let lastFinalUserTs = 0;
+
+function initRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { alert("Speech Recognition not supported"); return; }
+  recognition = new SR();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = "en-IN";
+
+  recognition.onstart = () => { isListening = true; micBtn.classList.add("listening"); };
+  recognition.onspeechstart = () => { if (isSpeaking) cancelTTS(); };
+  recognition.onresult = (e) => {
+    const result = e.results[e.results.length - 1];
+    if (!result) return;
+    if (!result.isFinal && isSpeaking) cancelTTS(); // barge-in
+    if (result.isFinal) {
+      const transcript = result[0].transcript.trim();
+      if (!transcript || transcript.toLowerCase() === lastUserText.toLowerCase()) return;
+      lastUserText = transcript;
+      lastFinalUserTs = Date.now();
+      addMessage(transcript, "user");
+      sendToServer(transcript);
     }
+  };
+  recognition.onerror = (e) => {
+    console.warn("ASR error:", e.error);
+    isListening = false; micBtn.classList.remove("listening");
+    if (!manualStop && e.error !== "not-allowed") setTimeout(() => startRecognition(), 500);
+  };
+  recognition.onend = () => {
+    isListening = false; micBtn.classList.remove("listening");
+    if (!manualStop && !isSpeaking) setTimeout(() => startRecognition(), 500);
+  };
+}
+
+function startRecognition() {
+  if (!recognition) initRecognition();
+  if (isListening) return;
+  manualStop = false;
+  recognition.start();
+}
+function stopRecognition() {
+  if (!recognition) return;
+  manualStop = true;
+  recognition.stop();
+  recognition.abort();
+  isListening = false;
+  micBtn.classList.remove("listening");
+}
+
+// -------------------- Mic Toggle --------------------
+micBtn.addEventListener("click", () => {
+  if (isListening || isSpeaking) {
+    console.log("🛑 Manual STOP: mic + TTS");
+    stopRecognition();
+    cancelTTS(true);
+  } else {
+    console.log("▶️ Manual START: mic listening");
+    lastUserText = "";
+    startRecognition();
+  }
 });
 
-initSocket();
+// -------------------- Server Message Handler --------------------
+function handleServerMessage(raw) {
+  let data;
+  try { data = JSON.parse(raw); } catch { return; }
+  const text = data?.text;
+  if (!text) return;
+  addMessage(text, "ai", data.source);
+  speakWithGap(text);
+}
